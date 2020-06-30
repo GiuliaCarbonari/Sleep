@@ -87,7 +87,8 @@ def set_sleep_stages(raw,path_stages):
 
 ##New Channels
 def Supera75(raw):
-    data,sfreq =(raw.get_data())* 1e6,int(raw.info['sfreq'])                                 
+    data,sfreq =(raw.get_data())* 1e6,int(raw.info['sfreq'])  
+    data=data*1e6  # Convert Volts to uV
     n=len(raw)
 
     arraysenial=np.asarray([])
@@ -137,8 +138,8 @@ def upper_than(raw,name_channel,threshold,sf,value):  #STEP IS NOT APPLIED YET!!
     return newsignal
 
 def pulse(time_shape,sfreq):
-    t = np.linspace(1, round(time_shape/sfreq), time_shape, endpoint=False)    #me creo mi señal artificial con pulso de 0.5 seg
-    pulso = signal.square(2 * np.pi * 1 * t) #señal del pulso
+    t = np.linspace(1, round(time_shape/sfreq), time_shape, endpoint=False)    #Create artificial signal with a 0.5 sec pulse
+    pulso = signal.square(2 * np.pi * 1 * t) # pulse signal
     return pulso
 
 def subtraction_eog(raw):
@@ -186,11 +187,11 @@ def re_esctructure(raw):
     
     # Initialize an info structure      
     new_info = mne.create_info(new_ch_names, sfreq=sfreq, ch_types=new_chtypes)
-    new_info['meas_date'] = raw.info['meas_date']       # Registro el timestamp para las anotaciones.
+    new_info['meas_date'] = raw.info['meas_date']      # Record timestamp for annotations
     
-    new_raw=mne.io.RawArray(new_data, new_info)
-    new_raw.set_annotations(raw.annotations)           # Construyo un nuevo objeto raw que tiene lo que necesito.
-
+    new_raw=mne.io.RawArray(new_data, new_info)        # Build a new raw object 
+    new_raw.set_annotations(raw.annotations)         
+    
     return new_raw
 
 def plot(raw,n_channels,scal,order):
