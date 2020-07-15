@@ -12,20 +12,14 @@ from scipy import signal
 #Print the system information
 mne.sys_info()
 
-def get_name(path): 
-    file = path.split(os.path.sep)[-1]
-    name = file.split('/')[-1]
-    subject = name.split('.')[0]
+def file_name(path):
+    name=os.path.splitext(os.path.basename(path))[0]
+    if '_2020' in name:
+        ind = str.index(name,'_2020')
+        name=name[:ind]
 
-    #if I already tagged, delete the date
-    if '2020_' in subject:
-        ind = str.index(subject,'2020')
-        subject=subject[:ind]
-    
-    d=datetime.now().strftime("%Y_%m_%d_%H_%M_%S") 
-    subject=subject+d
-
-    return subject
+    name=name + datetime.now().strftime("_%Y%B%d_%H-%M") 
+    return name
 
 def load_brainvision(path):
     # Import the BrainVision data into an MNE Raw object
@@ -86,56 +80,66 @@ def set_sleep_stages(raw,path_stages):
     return reraw, stages_anot
 
 ##New Channels
-def Supera75(raw):
-    data,sfreq =(raw.get_data())* 1e6,int(raw.info['sfreq'])  
-    data=data*1e6  # Convert Volts to uV
-    n=len(raw)
-
-    arraysenial=np.asarray([])
-
-    for i in range(0,n,sfreq):   
-        eeg=data[0][i:i+200]    #Every second
-        
-        signal=eeg - np.mean(eeg) 
-        signal=signal+np.min(signal)*-1 
-        
-        newsignal=signal
-        newsignal[signal>75]=80
-        newsignal[signal<=75]=0
-
-        arraysenial=np.concatenate( (arraysenial, list(newsignal)), axis=0) 
-
-    return arraysenial
-
-def upper_than(raw,name_channel,threshold,sf,value):  #STEP IS NOT APPLIED YET!!
+ef upper_new(raw,name_channel,threshold,sf):  #STEP IS NOT APPLIED YET!!
     ### Extract data, sampling frequency and channels names
     data,sf,chan=raw._data,raw.info['sfreq'], raw.info['ch_names']
-    data=data*1e6  # Convert Volts to uV
+    data=data*1e6       # Convert Volts to uV
+    print(data.shape)
+    print(type(data))
     n = data.shape[1]   #samples    
-    
+
+   
     channel = (raw.ch_names).index(name_channel)
     print('Channel choose:',raw.ch_names[channel])
+    data=data[channel][:]    
+    data=data.tolist()
     
-    step=int(sf/1)
-    win=200
-    zeros=[0 for i in range(0,step)]
-    ones=[1 for i in range(0,step)]
-
-    newsignal=np.asarray([])
+    step=int(sf/4)
+    win2=int(sf*2)
+    win1=int(sf*1)
+    win05=int(sf/2)
+    
+    dat=[0 for i in range(0,n)]
     
     ###Cycle every second
     for i in range(0,n,step):   
-        eeg=data[channel][i:i+win]     #Every second
-        aux=abs(max(eeg)-min(eeg))
-        if aux>threshold:
-            newsignal=np.concatenate((newsignal,zeros), axis=0)  
+        eeg2=data[i:i+win2]       #Every 2 seconds
+        eeg1=data[i:i+win1]       #Every second
+        eeg05=data[i:i+win05]     #Every half second
+    
+        aux2=abs(max(data[i:i+win2])-min(data[i:i+win2]))
+        aux1=abs(max(data[i:i+win1] )-min(data[i:i+win1] ))
+        aux05=abs(max(data[i:i+win05])-min(data[i:i+win05]))
+        for j in range(0,n,int(sf*30)):
+            dat[j]=3  
+        if aux05>threshold:
+            ind_max=data[i:i+win1].index(max(data[i:i+win1]))
+            ind_max=ind_max+i
+            ind_min=data[i:i+win1].index(min(data[i:i+win1]))
+            ind_min=ind_min+i
+            dat[ind_min]=1.4
+            dat[ind_max]=1.5
         else:
-            newsignal=np.concatenate((newsignal,ceros), axis=0)
+            if aux1>threshold:
+                ind_max=data[i:i+win1].index(max(data[i:i+win1]))
+                ind_max=ind_max+i
+                ind_min=data[i:i+win1].index(min(data[i:i+win1]))
+                ind_min=ind_min+i
+                dat[ind_min]=0.9
+                dat[ind_max]=1
+            else:
+                if aux2>threshold:
+                    ind_max=data[i:i+win2].index(max(data[i:i+win2]))
+                    ind_max=ind_max+i
+                    ind_min=data[i:i+win2].index(min(data[i:i+win2]))
+                    ind_min=ind_min+i
+                    dat[ind_min]=0.4
+                    dat[ind_max]=0.5
+        #To see the progress
         if (i % (n//100))==0:
             print('Progress: ',(i/(n//100)))
+    return dat
 
-    newsignal =newsignal[0:len(raw)]*value
-    return newsignal
 
 def pulse(time_shape,sfreq):
     t = np.linspace(1, round(time_shape/sfreq), time_shape, endpoint=False)    #Create artificial signal with a 0.5 sec pulse
@@ -162,10 +166,9 @@ def re_esctructure(raw):
     sub_eog=subtraction_eog(raw)
     sub_emg =subtraction_emg(raw)
 
-    #c3_1= raw.get_data(picks='C3_1') 
     pos_c3 = (raw.ch_names).index('C3_1')
     c3_1 = data[pos_c3,:]
-    #c4_1= raw.get_data(picks='C4_1')
+   
     pos_c4 =(raw.ch_names).index('C4_1')
     c4_1 = data[pos_c4,:]
 
@@ -177,12 +180,11 @@ def re_esctructure(raw):
     new_data[2]= pulse(time_shape,sfreq)
     new_data[3]= c3_1
     new_data[4]= c4_1    
-    #new_data[5]= upper_than(raw,'C4_1',75,step,80) 
-    new_data[5]= Supera75(raw)
+    new_data[5]= upper_new(raw,'C4_1',75,sfreq)  
+    new_data=new_data[[0,1,2,3,4,5], :]
     new_data=new_data[[0,1,2,3,4,5], :]
 
     new_ch_names = ['EOG', 'EMG', 'Pulse', 'C3', 'C4','Supera 75']  
-    #new_ch_names = ['EOG', 'EMG', 'Pulse', 'C3', 'C4','Upper'] 
     new_chtypes = ['eog'] + ['emg']+ ['misc'] + 2 *['eeg'] + ['stim'] # Recompongo los canales.
     
     # Initialize an info structure      
@@ -206,16 +208,18 @@ def plot(raw,n_channels,scal,order):
     order=order)
 
 #Main function
-def main():
-    anotaciones = messagebox.askquestion(message="¿El archivo ya posee anotaciones?", title="Anotaciones")
+def main():  # Wrapper function
+    messagebox.showinfo(message="This program allows you to tag a specific event.", title="Info")
+    messagebox.askokcancelmessage=(" Was a scoring done previously with this data?")
+    anotaciones = messagebox.askquestion(message=" Was a scoring done previously with this data?", title="Anotaciones")
     if (anotaciones == 'no'):
         #messagebox.showinfo(message="Selecciona el archivo vhdr", title="Seleccion de datos")
-        path = easygui.fileopenbox(title='Seleccione vhdr')#selecciono la carpeta vhdr
-        raw=load_brainvision(path) 
+        path = easygui.fileopenbox(title='Select VHDR file.')#selecciono la carpeta vhdr
+        raw=load_brainvision_vhdr(path) 
         show_info(raw)
 
         #messagebox.showinfo(message="Selecciona txt con etapas de sueño", title="Seleccion de Etapas de sueño")
-        path_states = easygui.fileopenbox(title='Seleccione txt con las etapas de sueño') #selecciono el txt de anotaciones anteriores
+        path_states = easygui.fileopenbox(title='Select the hypnogram (file with extension txt).') #selecciono el txt de anotaciones anteriores
         raw,_ = set_sleep_stages(raw,path_states)
         
         raw=re_esctructure(raw)
@@ -223,24 +227,23 @@ def main():
 
     elif(anotaciones == 'yes'):  
         #messagebox.showinfo(message="Selecciona el archivo fif", title="Seleccion de datos")
-        path = easygui.fileopenbox(title='Seleccione fif') #selecciono la carpeta vhdr
+        path = easygui.fileopenbox(title='Select FIF file.') #selecciono la carpeta vhdr
         raw = mne.io.read_raw_fif(path) 
   
     
     #For actual EEG/EOG/EMG/STIM data different scaling factors should be used.
-    scal = dict(eeg=20e-5, eog=150e-5,emg=15e-4, misc=1e-3, stim=1)
+    scal = dict(eeg=20e-5, eog=150e-5,emg=15e-4, misc=1e-3, stim=15)
     n_channels=6
     order=[0,3,2,4,1,5]
 
     # Plot it!
     plot(raw,n_channels,scal,order)
+
+    #Save the tagged data
+    raw.annotations.save(file_name(path)+ ".txt")
+    raw.save(file_name(path)+  ".fif",overwrite=True)
     
-    subject = get_name(path)  
-    raw.annotations.save(subject+ ".txt")
-    raw.save(subject +  ".fif",overwrite=True)
-    
-    print(' ')
-    print('C \' est fini!')
+    print('Scoring was completed and the data was saved.')
 
 if __name__ == '__main__':
-    main()
+    main() 
